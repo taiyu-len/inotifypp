@@ -20,10 +20,18 @@ struct instance
 	auto watch() -> event_ref;
 	auto watch(std::error_code&) noexcept -> event_ref;
 
+	template<typename H>
+	void async_watch(H && handler);
 private:
 	stream_descriptor _sd;
 	event_buffer _buffer;
 };
+
+template<typename H>
+void instance::async_watch(H && handler)
+{
+	_buffer.async_read(_sd, std::forward<H>(handler));
+}
 } // inotifypp
 
 #endif // INOTIFYPP_INSTANCE_HPP

@@ -1,5 +1,6 @@
 #include "inotifypp/inotify.hpp"
 #include <boost/asio/io_context.hpp>
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <doctest/doctest.h>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <random>
 #include <string>
+#include <sys/stat.h>
 #include <tuple>
 #include <vector>
 
@@ -79,3 +81,56 @@ TEST_CASE("Watching a directory")
 	REQUIRE(in_delete_self(instance.watch()));
 }
 
+static
+void handler(std::error_code const& ec, inotifypp::event_ref er)
+{
+	if (ec) throw ec;
+	if (in_ignored(er))
+	{
+		MESSAGE("Watch #" << er.wd() << " Has been removed \n");
+		return;
+	}
+	auto type = in_isdir(er) ? "Directory" : "File";
+	auto kind =
+		in_create(er) ? "was created" :
+		in_modify(er) ? "was modified" :
+		in_attrib(er) ? "had attributes changed" :
+		in_close(er)  ? "was closed" :
+		in_move(er)   ? "was moved" :
+		in_delete(er) ? "was deleted" :
+		in_open(er)   ? "was opened" : "did something else";
+	MESSAGE(type << " " << er.name() << " " << kind << '\n');
+}
+
+TEST_CASE("Async watch")
+{
+	auto io = boost::asio::io_context{};
+	auto [data, instance] = make_instance(io);
+	auto dir = tmp_dir();
+	std::filesystem::create_directory(dir);
+	instance.add_watch(dir.c_str(), IN_ALL_EVENTS).forget();
+	instance.async_watch(handler);
+
+	namespace fs = std::filesystem;
+	fs::path files[] = {
+		dir/"a.txt",
+		dir/"b.txt",
+		dir/"c.txt",
+		dir/"subdir",
+	};
+	{
+		auto f1 = std::fstream(files[0], std::ios::out);
+		auto f2 = std::fstream(files[1], std::ios::out);
+		f1.close(); f2.close();
+		f1.open(files[0]); f2.open(files[1]);
+		f1 << "foo\nbar\n"; f2 << "bar\nbaz\n";
+		f1.close(); f2.close();
+	}
+	fs::rename(files[0], files[2]);
+	fs::create_directory(files[3]);
+	fs::remove(files[1]);
+	fs::remove(files[2]);
+	fs::remove(files[3]);
+	fs::remove(dir);
+	io.run_for(std::chrono::seconds(1));
+}
