@@ -1,2 +1,33 @@
-CXXFLAGS=-std=c++17 -lpthread
-inotify_sync: inotify_sync.cpp inotify.hpp
+CXXFLAGS := -std=c++17 -Wall -Wextra -march=native
+LDLIBS=-lstdc++fs
+CPPFLAGS := -Iinclude
+DEBUG ?= 1
+ifeq ($(DEBUG), 1)
+  CXXFLAGS += -Og -g1 -fsanitize=address,undefined
+else
+  CPPFLAGS += -DNDEBUG -DDOCTEST_CONFIG_DISABLE
+endif
+
+SOURCES := event.cpp event_buffer.cpp instance.cpp
+SOURCES += main.cpp test.cpp
+SOURCES := $(addprefix src/inotifypp/,$(SOURCES))
+OBJECTS := $(addsuffix .o,$(basename $(SOURCES)))
+DEPENDS := $(addsuffix .d,$(basename $(SOURCES)))
+
+tests: $(OBJECTS)
+	$(LINK.cc) $^ $(LDLIBS) -o $@
+
+test: tests
+	./tests
+
+ifeq ($(MAKECMDGOALS),clean)
+else ifeq ($(MAKECMDGOALS),mostlyclean)
+else
+-include $(DEPENDS)
+%.d: %.cpp; @$(CXX) $(CPPFLAGS) $< -MM -MT $*.o -MT $@ > $@
+endif
+
+mostlyclean:
+	@rm -f $(OBJECTS) $(DEPENDS)
+clean: mostlyclean
+	@rm -f tests
