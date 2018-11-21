@@ -15,6 +15,7 @@ struct instance
 	~instance() noexcept;
 	instance(instance &&) noexcept;
 	auto operator=(instance&&) noexcept -> instance&;
+	auto buffer() noexcept -> event_buffer& { return _buffer; };
 	auto add_watch(char const*, mask_t) -> watch_item;
 	auto add_watch(std::string const&, mask_t) -> watch_item;
 	auto watch() -> event_ref;
@@ -27,10 +28,10 @@ private:
 	event_buffer _buffer;
 };
 
-template<typename H>
-void instance::async_watch(H && handler)
+template<typename EventHandler>
+void instance::async_watch(EventHandler && handler)
 {
-	_buffer.async_read(_sd, std::forward<H>(handler));
+	_buffer.async_read(_sd, std::forward<EventHandler>(handler));
 }
 } // inotifypp
 

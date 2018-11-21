@@ -3,7 +3,7 @@ LDLIBS=-lstdc++fs -lpthread -lboost_system
 CPPFLAGS := -Iinclude
 DEBUG ?= 1
 ifeq ($(DEBUG), 1)
-  CXXFLAGS += -Og -g1 -fsanitize=address,undefined
+  CXXFLAGS += -Og -ggdb -fsanitize=address,undefined
 else
   CPPFLAGS += -DNDEBUG -DDOCTEST_CONFIG_DISABLE
 endif

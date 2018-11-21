@@ -3,6 +3,7 @@
 #include "inotifypp/fwd.hpp"
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/system/error_code.hpp>
 #include <cstddef>
@@ -54,22 +55,39 @@ event_buffer::event_buffer(T &x)
 , _last(std::data(x) + std::size(x))
 {}
 
-template<typename H>
-void event_buffer::async_read(stream_descriptor& sd, H&& h)
+template<typename EventHandler>
+// EventHandler: x(std::error_code, inotify_event const*);
+// will spawn an async job on sd's context that calls h once
+void event_buffer::async_read(stream_descriptor& sd, EventHandler&& h)
 {
-	auto f = [this, &sd, h = std::forward<H>(h)] (
-		boost::system::error_code const& ec, size_t bytes_read)
+	// there are unhandled elements in the buffer
+	if (this->_start < this->_end)
 	{
-		if (ec) h(std::make_error_code(std::errc(ec.value())), {});
-		this->_end += bytes_read;
-		while (this->_start < this->_end)
+		auto f = [this, h = std::forward<EventHandler>(h)] () mutable
 		{
 			h({}, this->pop());
+		};
+		boost::asio::post(sd.get_executor(), std::move(f));
+		return;
+	}
+	// else we need to read more events, so we clear the buffer,
+	// create a read handler, and call it asynchronously
+	this->clear();
+	auto f = [this, h = std::forward<EventHandler>(h)] (
+		boost::system::error_code const& ec,
+		size_t bytes_read) mutable
+	{
+		if (ec)
+		{
+			h(std::make_error_code(std::errc(ec.value())), {});
 		}
-		this->clear();
-		this->async_read(sd, std::move(h));
+		else
+		{
+			this->_end += bytes_read;
+			h({}, this->pop());
+		}
 	};
-	auto b = boost::asio::mutable_buffer({_end, available()});
+	auto b = boost::asio::mutable_buffer({data(), size()});
 	sd.async_read_some(b, std::move(f));
 }
 
