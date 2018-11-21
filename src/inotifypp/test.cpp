@@ -1,4 +1,5 @@
 #include "inotifypp/inotify.hpp"
+#include <boost/asio/io_context.hpp>
 #include <cstddef>
 #include <cstring>
 #include <doctest/doctest.h>
@@ -7,6 +8,7 @@
 #include <iostream>
 #include <random>
 #include <string>
+#include <tuple>
 #include <vector>
 
 static
@@ -18,10 +20,10 @@ auto data_buffer() -> std::pair<std::vector<std::byte>, inotifypp::event_buffer>
 }
 
 static
-auto data_instance() -> std::pair<std::vector<std::byte>, inotifypp::instance>
+auto make_instance(boost::asio::io_context& io) -> std::pair<std::vector<std::byte>, inotifypp::instance>
 {
 	auto data = std::vector<std::byte>(inotifypp::min_buffer_size * 64);
-	auto instance = inotifypp::instance(data);
+	auto instance = inotifypp::instance(io, data);
 	return { std::move(data), std::move(instance) };
 }
 
@@ -33,14 +35,13 @@ auto tmp_dir() -> std::filesystem::path
 	return dir / std::tmpnam(buffer);
 }
 
-
 TEST_CASE("Manually creating events")
 {
 	auto [data, buffer] = data_buffer();
 	auto file = std::string{"muh filename.txt"};
 	inotifypp::event ev({1, IN_CREATE, 0, 32}, file);
 	REQUIRE(buffer.try_push(ev));
-	inotify_event const* p = buffer.next();
+	inotify_event const* p = buffer.pop();
 	REQUIRE(p);
 	REQUIRE_EQ(p->wd, ev.wd());
 	REQUIRE_EQ(p->mask, ev.mask());
@@ -51,7 +52,8 @@ TEST_CASE("Manually creating events")
 
 TEST_CASE("Watching a directory")
 {
-	auto [data, instance] = data_instance();
+	auto io = boost::asio::io_context{};
+	auto [data, instance] = make_instance(io);
 	auto dir = tmp_dir();
 	auto filename = dir/"muh file.txt";
 
@@ -76,3 +78,4 @@ TEST_CASE("Watching a directory")
 	std::filesystem::remove(dir);
 	REQUIRE(in_delete_self(instance.watch()));
 }
+

@@ -7,54 +7,48 @@
 
 namespace inotifypp
 {
-instance::instance(event_buffer x)
-: _fd(inotify_init1(IN_CLOEXEC))
+instance::instance(boost::asio::io_context& io, event_buffer x)
+: _sd(io)
 , _buffer(x)
 {
-	if (_fd == -1)
+	auto fd = inotify_init1(IN_CLOEXEC);
+	if (fd == -1)
 	{
 		throw std::make_error_code(std::errc(errno));
 	}
+	_sd.assign(fd);
 }
 
 instance::~instance() noexcept
 {
-	if (_fd != -1)
-	{
-		::close(_fd);
-	}
+	_sd.close();
 }
 
 instance::instance(instance&& x) noexcept
-: _fd(x._fd)
+: _sd(std::move(x._sd))
 , _buffer(x._buffer)
 {
-	x._fd = -1;
 	x._buffer = event_buffer{};
 }
 
 auto instance::operator=(instance&& x) noexcept -> instance&
 {
-	if (_fd != -1)
-	{
-		::close(_fd);
-	}
-	_fd = std::exchange(x._fd, -1);
+	_sd = std::move(x._sd);
 	x._buffer = event_buffer{};
 	return *this;
 }
 
-auto instance::add_watch(char const* str, mask_t m) const -> watch_item
+auto instance::add_watch(char const* str, mask_t m) -> watch_item
 {
-	auto wd = inotify_add_watch(_fd, str, m);
+	auto wd = inotify_add_watch(_sd.native_handle(), str, m);
 	if (wd == -1)
 	{
 		throw std::make_error_code(std::errc(errno));
 	}
-	return watch_item{ wd, _fd };
+	return watch_item{ wd, _sd.native_handle() };
 }
 
-auto instance::add_watch(std::string const& str, mask_t m) const -> watch_item
+auto instance::add_watch(std::string const& str, mask_t m) -> watch_item
 {
 	return add_watch(str.c_str(), m);
 }
@@ -72,11 +66,11 @@ auto instance::watch() -> event_ref
 
 auto instance::watch(std::error_code &ec) noexcept -> event_ref
 {
-	if ((ec = _buffer.read(_fd)))
+	if ((ec = _buffer.read(_sd)))
 	{
 		return event_ref{};
 	}
-	return _buffer.next();
+	return _buffer.pop();
 }
 
 } // inotifypp

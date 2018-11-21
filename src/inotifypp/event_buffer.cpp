@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <system_error>
 #include <unistd.h>
+#include <boost/system/error_code.hpp>
 
 namespace inotifypp
 {
@@ -22,28 +23,33 @@ auto event_buffer::available() const noexcept -> size_t
 	return _last - _end;
 }
 
-auto event_buffer::next() -> inotify_event const*
+auto event_buffer::top() const -> inotify_event const*
 {
-	auto event = reinterpret_cast<inotify_event const*>(_start);
+	return reinterpret_cast<inotify_event const*>(_start);
+}
+
+auto event_buffer::pop() -> inotify_event const*
+{
+	auto event = top();
 	_start += sizeof(*event) + event->len;
 	return event;
 }
 
-auto event_buffer::read(int fd) -> std::error_code
+auto event_buffer::read(stream_descriptor& sd) -> std::error_code
 {
-	// TODO use asio to handle reads/async reads on file descriptor
+	// we still have events unhandled, so dont read.
 	if (_start < _end)
 	{
 		return {};
 	}
-	_start = _end = _first;
-	auto bytes_read = ::read(fd, _first, available());
-	if (bytes_read == -1)
+	this->clear();
+	auto ec = boost::system::error_code{};
+	auto br = sd.read_some(boost::asio::mutable_buffer{data(), size()}, ec);
+	if (! ec)
 	{
-		return std::make_error_code(std::errc(errno));
+		_end += br;
 	}
-	_end += bytes_read;
-	return {};
+	return std::make_error_code(std::errc(ec.value()));;
 }
 
 auto event_buffer::try_push(event const& e) -> bool
@@ -64,6 +70,11 @@ auto event_buffer::try_push(event const& e) -> bool
 	std::memcpy(_end, e.name(), e.len());
 	_end += e.len();
 	return true;
+}
+
+void event_buffer::clear()
+{
+	_start = _end = _first;
 }
 
 } // inotifypp

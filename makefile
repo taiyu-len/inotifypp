@@ -1,5 +1,5 @@
 CXXFLAGS := -std=c++17 -Wall -Wextra -march=native
-LDLIBS=-lstdc++fs
+LDLIBS=-lstdc++fs -lpthread -lboost_system
 CPPFLAGS := -Iinclude
 DEBUG ?= 1
 ifeq ($(DEBUG), 1)
