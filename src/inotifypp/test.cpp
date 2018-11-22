@@ -99,9 +99,6 @@ struct event_handler {
 	inotifypp::instance* in;
 	size_t i = 0;
 
-	event_handler(inotifypp::instance &in)
-	: in(&in) {}
-
 	void initiate() {
 		in->async_watch(std::move(*this));
 	}
@@ -121,13 +118,12 @@ TEST_CASE("Async watch")
 {
 	auto io = boost::asio::io_context{};
 	auto [data, in] = make_instance(io);
-	auto h  = event_handler(in);
 	auto file = std::string("file.txt");
 	for (auto event : events)
 	{
 		inotifypp::event ev({1, event, 0, 16}, file);
 		REQUIRE(in.buffer().try_push(ev));
 	}
-	h.initiate();
+	event_handler{&in}.initiate();
 	io.run();
 }

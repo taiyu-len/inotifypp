@@ -2,7 +2,10 @@
 #define INOTIFYPP_INSTANCE_HPP
 #include "inotifypp/event_buffer.hpp"
 #include "inotifypp/fwd.hpp"
+#include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/system/error_code.hpp>
 #include <string>
 #include <sys/inotify.h>
 #include <system_error>
@@ -29,9 +32,40 @@ private:
 };
 
 template<typename EventHandler>
+// EventHandler: x(std::error_code, event_ref);
+// will spawn an async job in sd's executor that calls h once
 void instance::async_watch(EventHandler && handler)
 {
-	_buffer.async_read(_sd, std::forward<EventHandler>(handler));
+	auto fn = [this, handler = std::forward<EventHandler>(handler)] (
+		boost::system::error_code const& ec,
+		size_t bytes_read) mutable
+	{
+		if (ec)
+		{
+			handler(std::make_error_code(std::errc(ec.value())), {});
+		}
+		else
+		{
+			_buffer.grow(bytes_read);
+			handler({}, event_ref(_buffer.pop()));
+		}
+	};
+	// no more events
+	if (_buffer.remaining() == 0)
+	{
+		_buffer.clear();
+		auto b = boost::asio::buffer(_buffer.data(), _buffer.size());
+		_sd.async_read_some(b, std::move(fn));
+	}
+	// existing events
+	else
+	{
+		auto f = [fn=std::move(fn)] () mutable
+		{
+			fn({}, 0);
+		};
+		boost::asio::post(_sd.get_executor(), std::move(f));
+	}
 }
 } // inotifypp
 

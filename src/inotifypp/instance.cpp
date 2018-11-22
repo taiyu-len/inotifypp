@@ -1,6 +1,6 @@
+#include "inotifypp/event.hpp"
 #include "inotifypp/instance.hpp"
 #include "inotifypp/watch_item.hpp"
-#include "inotifypp/event.hpp"
 #include <errno.h>
 #include <unistd.h>
 #include <utility>
@@ -66,10 +66,18 @@ auto instance::watch() -> event_ref
 
 auto instance::watch(std::error_code &ec) noexcept -> event_ref
 {
-	if ((ec = _buffer.read(_sd)))
+	// If there are no events in buffer, read in more.
+	if (_buffer.remaining() == 0)
 	{
-		return event_ref{};
+		_buffer.clear();
+		auto boost_ec = boost::system::error_code{};
+		auto buffer = boost::asio::buffer(_buffer.data(), _buffer.size());
+		auto bytes_read = _sd.read_some(buffer, boost_ec);
+		ec = std::make_error_code(std::errc(boost_ec.value()));
+		if (ec) return {};
+		_buffer.grow(bytes_read);
 	}
+	// get next event from buffer
 	return _buffer.pop();
 }
 
