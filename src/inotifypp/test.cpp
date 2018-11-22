@@ -1,16 +1,12 @@
 #include "inotifypp/inotify.hpp"
 #include <boost/asio/io_context.hpp>
-#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <doctest/doctest.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <random>
 #include <string>
-#include <sys/stat.h>
-#include <tuple>
 #include <vector>
 
 static
@@ -79,51 +75,4 @@ TEST_CASE("Watching a directory")
 	// remove watched directory
 	std::filesystem::remove(dir);
 	REQUIRE(in_delete_self(instance.watch()));
-}
-
-static
-inotifypp::mask_t events[] = {
-	// File
-	IN_CREATE, IN_OPEN,
-	IN_MODIFY, IN_CLOSE_WRITE,
-	IN_DELETE,
-	// Directory
-	IN_CREATE|IN_ISDIR, IN_DELETE|IN_ISDIR,
-	// delete self
-	IN_DELETE_SELF, IN_IGNORED,
-};
-static
-const size_t events_n = sizeof(events) / sizeof(*events);
-
-struct event_handler {
-	inotifypp::instance* in;
-	size_t i = 0;
-
-	void initiate() {
-		in->async_watch(std::move(*this));
-	}
-	void operator()(std::error_code const& ec, inotifypp::event_ref er)
-	{
-		if (ec) throw std::system_error(ec);
-		REQUIRE_EQ(er.mask(), events[i++]);
-		// continue calling if we still have events
-		if (! in_ignored(er))
-		{
-			initiate();
-		}
-	}
-};
-
-TEST_CASE("Async watch")
-{
-	auto io = boost::asio::io_context{};
-	auto [data, in] = make_instance(io);
-	auto file = std::string("file.txt");
-	for (auto event : events)
-	{
-		inotifypp::event ev({1, event, 0, 16}, file);
-		REQUIRE(in.buffer().try_push(ev));
-	}
-	event_handler{&in}.initiate();
-	io.run();
 }

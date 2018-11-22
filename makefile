@@ -9,7 +9,7 @@ else
 endif
 
 SOURCES := event.cpp event_buffer.cpp instance.cpp
-SOURCES += main.cpp test.cpp
+SOURCES += main.cpp test.cpp test_async.cpp
 SOURCES := $(addprefix src/inotifypp/,$(SOURCES))
 OBJECTS := $(addsuffix .o,$(basename $(SOURCES)))
 DEPENDS := $(addsuffix .d,$(basename $(SOURCES)))
