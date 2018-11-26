@@ -22,6 +22,8 @@ struct instance
 	auto watch() -> event_ref;
 	auto watch(std::error_code&) noexcept -> event_ref;
 
+	using executor_type = stream_descriptor::executor_type;
+	auto get_executor() noexcept -> executor_type { return _sd.get_executor(); }
 private:
 	stream_descriptor _sd;
 	event_buffer _buffer;
